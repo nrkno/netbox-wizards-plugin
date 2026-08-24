@@ -1,0 +1,79 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block content %}
+  <div class="row">
+    <div class="col col-md-12">
+      <div class="card">
+        <h5 class="card-header">
+          Steps
+          <div class="card-actions">
+            <a href="{% url 'plugins:netbox_wizards:wizardstep_add' %}?definition={{ object.pk }}" class="btn btn-sm btn-outline-success">
+              <i class="mdi mdi-plus-thick"></i> Add step
+            </a>
+          </div>
+        </h5>
+        <div class="card-body">
+          {% if steps %}
+            <ol class="list-group list-group-numbered">
+              {% for step in steps %}
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                  <div class="ms-2 me-auto">
+                    <div class="fw-bold">
+                      {{ step.title }}
+                      {% if step.key %}<code class="small text-muted">{{ step.key }}</code>{% endif %}
+                    </div>
+                    {% if step.instructions %}{{ step.instructions|markdown }}{% endif %}
+                    {% for img in step.images.all %}<img src="{{ img.image.url }}" alt="{{ img.caption|default:step.title }}" class="img-fluid mb-1" style="max-width: 300px;">{% endfor %}
+                    {% if step.link_url %}<div><a href="{{ step.link_url }}"{% if step.link_url|slice:":4" == "http" %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ step.link_text|default:"Open" }}</a></div>{% endif %}
+                    {% if step.is_multi_choice %}
+                      <div class="mt-2">
+                        {% badge "Multi-choice" bg_color="purple" %}
+                        <span class="fw-bold">{{ step.multi_choice_question }}</span>
+                        <ul class="mb-0">
+                          {% for choice in step.choices.all %}
+                            <li>{{ choice.label }} &rarr;
+                              {% if choice.next_step %}{{ choice.next_step.title }}{% else %}<span class="text-muted">ends the wizard</span>{% endif %}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    {% elif step.is_decision %}
+                      <div class="mt-2">
+                        {% badge "Decision" bg_color="orange" %}
+                        <span class="fw-bold">{{ step.decision_question }}</span>
+                        <ul class="mb-0">
+                          <li>If Yes &rarr;
+                            {% if step.next_step_if_true %}{{ step.next_step_if_true.title }}{% else %}<span class="text-muted">ends the wizard</span>{% endif %}
+                          </li>
+                          <li>If No &rarr;
+                            {% if step.next_step_if_false %}{{ step.next_step_if_false.title }}{% else %}<span class="text-muted">ends the wizard</span>{% endif %}
+                          </li>
+                        </ul>
+                      </div>
+                    {% else %}
+                      <div class="mt-2 small">
+                        <span class="text-muted">Next:</span>
+                        {% if step.next_step %}{{ step.next_step.title }}{% else %}<span class="text-muted">ends the wizard</span>{% endif %}
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="d-print-none">
+                    <a href="{% url 'plugins:netbox_wizards:wizardstep_edit' pk=step.pk %}" class="btn btn-sm btn-outline-secondary">
+                      <i class="mdi mdi-pencil"></i>
+                    </a>
+                    <a href="{% url 'plugins:netbox_wizards:wizardstep_delete' pk=step.pk %}" class="btn btn-sm btn-outline-danger">
+                      <i class="mdi mdi-trash-can-outline"></i>
+                    </a>
+                  </div>
+                </li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <p class="text-muted">No steps yet. Add at least one step before starting this wizard.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

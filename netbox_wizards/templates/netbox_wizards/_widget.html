@@ -1,0 +1,247 @@
+{% load helpers %}
+<style>
+  #netbox-wizard-widget {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    z-index: 1050;
+    width: 480px;
+    max-width: calc(100vw - 2rem);
+    box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, .25);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  #netbox-wizard-widget .netbox-wizard-widget-details {
+    display: none;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  #netbox-wizard-widget.netbox-wizard-widget-expanded .netbox-wizard-widget-details {
+    display: block;
+  }
+  #netbox-wizard-widget .netbox-wizard-widget-details img {
+    max-width: 100%;
+    height: auto;
+  }
+  #netbox-wizard-widget .netbox-wizard-widget-toggle {
+    background: none;
+    border: none;
+    line-height: 1;
+  }
+  #netbox-wizard-widget .netbox-wizard-panel { display: none; }
+  #netbox-wizard-widget .netbox-wizard-panel.active { display: block; }
+  #netbox-wizard-widget .netbox-wizard-nav {
+    background: none;
+    border: none;
+    line-height: 1;
+    padding: 0 0.25rem;
+  }
+  #netbox-wizard-widget .netbox-wizard-nav:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+  #netbox-wizard-widget .netbox-wizard-dots {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  #netbox-wizard-widget .netbox-wizard-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.3;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+  }
+  #netbox-wizard-widget .netbox-wizard-dot.active {
+    opacity: 1;
+  }
+</style>
+
+<div id="netbox-wizard-widget" class="card d-print-none">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <span class="text-truncate" id="netbox-wizard-widget-title">
+      <i class="mdi mdi-clipboard-check-outline"></i>
+      <span class="netbox-wizard-title-text">{{ instance.definition.name }}</span>
+    </span>
+    <div class="d-flex align-items-center gap-2">
+      {% if instances|length > 1 %}
+        <button type="button" class="netbox-wizard-nav text-reset" id="netbox-wizard-prev" title="Previous wizard">
+          <i class="mdi mdi-chevron-left"></i>
+        </button>
+        <div class="netbox-wizard-dots" id="netbox-wizard-dots">
+          {% for inst in instances %}
+            <button type="button"
+                    class="netbox-wizard-dot {% if forloop.first %}active{% endif %}"
+                    data-index="{{ forloop.counter0 }}"
+                    title="{{ inst.definition.name }}"></button>
+          {% endfor %}
+        </div>
+        <button type="button" class="netbox-wizard-nav text-reset" id="netbox-wizard-next" title="Next wizard">
+          <i class="mdi mdi-chevron-right"></i>
+        </button>
+      {% endif %}
+      <a href="{{ instance.get_absolute_url }}" class="text-reset netbox-wizard-open-link" title="Open full wizard page">
+        <i class="mdi mdi-open-in-new"></i>
+      </a>
+      <button type="button" id="netbox-wizard-widget-toggle" class="netbox-wizard-widget-toggle text-reset" title="Expand/collapse">
+        <i class="mdi mdi-chevron-up"></i>
+      </button>
+    </div>
+  </div>
+
+  {% for inst in instances %}
+  <div class="netbox-wizard-panel {% if forloop.first %}active{% endif %}" data-index="{{ forloop.counter0 }}">
+    <div class="card-body py-2">
+      <div class="progress mb-2" style="height: 0.75rem;">
+        <div class="progress-bar bg-success" role="progressbar" style="width: {{ inst.progress_percent }}%;"></div>
+      </div>
+      <div class="small text-muted">
+        Step {{ inst.completed_step_count|add:1 }} of {{ inst.total_steps }}
+        {% if inst.current_step %}&mdash; {{ inst.current_step.title }}{% endif %}
+      </div>
+    </div>
+
+    <div class="netbox-wizard-widget-details">
+      {% if inst.current_step %}
+        <div class="card-body pt-0">
+          {% if inst.current_step.instructions %}
+            {{ inst.current_step.instructions|markdown }}
+          {% endif %}
+          {% for img in inst.current_step.images.all %}
+            <img src="{{ img.image.url }}" alt="{{ img.caption|default:inst.current_step.title }}" class="rounded mb-2">
+          {% endfor %}
+          {% if inst.current_step.link_url %}
+            <div class="mb-2">
+              <a href="{{ inst.current_step.link_url }}" class="btn btn-sm btn-outline-primary"{% if inst.current_step.link_url|slice:":4" == "http" %} target="_blank" rel="noopener noreferrer"{% endif %}>
+                {{ inst.current_step.link_text|default:"Open" }}
+              </a>
+            </div>
+          {% endif %}
+          {% if inst.current_step.is_multi_choice %}
+            <div class="alert alert-info py-2 mb-0">
+              <i class="mdi mdi-help-circle"></i> {{ inst.current_step.multi_choice_question }}
+            </div>
+          {% elif inst.current_step.is_decision %}
+            <div class="alert alert-info py-2 mb-0">
+              <i class="mdi mdi-help-circle"></i> {{ inst.current_step.decision_question }}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if inst.status == 'in_progress' %}
+        <div class="card-body pt-0 d-flex flex-wrap gap-2">
+          {% if inst.current_step.is_multi_choice %}
+            {% for choice in inst.current_step.choices.all %}
+              <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=inst.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="choice" value="{{ choice.key }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button type="submit" class="btn btn-sm btn-outline-primary">{{ choice.label }}</button>
+              </form>
+            {% endfor %}
+          {% elif inst.current_step.is_decision %}
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=inst.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="decision" value="true">
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <button type="submit" class="btn btn-sm btn-success"><i class="mdi mdi-check"></i> Yes</button>
+            </form>
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=inst.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="decision" value="false">
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-close"></i> No</button>
+            </form>
+          {% else %}
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=inst.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <button type="submit" class="btn btn-sm btn-success">
+                <i class="mdi mdi-check"></i> Mark complete &amp; continue
+              </button>
+            </form>
+          {% endif %}
+          <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_cancel' pk=inst.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+  (function () {
+    var STORAGE_KEY = "netboxWizardWidgetExpanded";
+    var ACTIVE_KEY = "netboxWizardWidgetActive";
+    var widget = document.getElementById("netbox-wizard-widget");
+    var toggle = document.getElementById("netbox-wizard-widget-toggle");
+    if (!widget || !toggle) return;
+
+    var panels = widget.querySelectorAll(".netbox-wizard-panel");
+    var dots = widget.querySelectorAll(".netbox-wizard-dot");
+    var prevBtn = document.getElementById("netbox-wizard-prev");
+    var nextBtn = document.getElementById("netbox-wizard-next");
+    var titleText = widget.querySelector(".netbox-wizard-title-text");
+    var openLink = widget.querySelector(".netbox-wizard-open-link");
+    var totalPanels = panels.length;
+    var currentIndex = 0;
+
+    var titles = [];
+    var urls = [];
+    {% for inst in instances %}
+      titles.push("{{ inst.definition.name|escapejs }}");
+      urls.push("{{ inst.get_absolute_url|escapejs }}");
+    {% endfor %}
+
+    function showPanel(index) {
+      currentIndex = index;
+      panels.forEach(function (p, i) { p.classList.toggle("active", i === index); });
+      dots.forEach(function (d, i) { d.classList.toggle("active", i === index); });
+      if (titleText) titleText.textContent = titles[index];
+      if (openLink) openLink.href = urls[index];
+      if (prevBtn) prevBtn.disabled = index === 0;
+      if (nextBtn) nextBtn.disabled = index === totalPanels - 1;
+      try { window.localStorage.setItem(ACTIVE_KEY, index); } catch (e) {}
+    }
+
+    if (prevBtn) prevBtn.addEventListener("click", function () {
+      if (currentIndex > 0) showPanel(currentIndex - 1);
+    });
+    if (nextBtn) nextBtn.addEventListener("click", function () {
+      if (currentIndex < totalPanels - 1) showPanel(currentIndex + 1);
+    });
+    dots.forEach(function (dot) {
+      dot.addEventListener("click", function () {
+        showPanel(parseInt(this.getAttribute("data-index"), 10));
+      });
+    });
+
+    var savedIndex = 0;
+    try { savedIndex = parseInt(window.localStorage.getItem(ACTIVE_KEY), 10) || 0; } catch (e) {}
+    if (savedIndex >= totalPanels) savedIndex = 0;
+    showPanel(savedIndex);
+
+    function setExpanded(expanded) {
+      widget.classList.toggle("netbox-wizard-widget-expanded", expanded);
+      var icon = toggle.querySelector("i");
+      if (icon) icon.className = expanded ? "mdi mdi-chevron-down" : "mdi mdi-chevron-up";
+      try { window.localStorage.setItem(STORAGE_KEY, expanded ? "1" : "0"); } catch (e) {}
+    }
+
+    toggle.addEventListener("click", function () {
+      setExpanded(!widget.classList.contains("netbox-wizard-widget-expanded"));
+    });
+
+    var saved = null;
+    try { saved = window.localStorage.getItem(STORAGE_KEY); } catch (e) {}
+    setExpanded(saved !== "0");
+  })();
+</script>

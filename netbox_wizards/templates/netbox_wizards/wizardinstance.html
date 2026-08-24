@@ -1,0 +1,131 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block content %}
+  <div class="row">
+    <div class="col col-md-4">
+      <div class="card">
+        <h5 class="card-header">Progress</h5>
+        <div class="card-body">
+          <div class="progress mb-3" style="height: 1.5rem;">
+            <div class="progress-bar bg-success" role="progressbar" style="width: {{ object.progress_percent }}%;">
+              {{ object.progress_percent }}%
+            </div>
+          </div>
+          <ol class="list-group list-group-numbered">
+            {% for step in steps %}
+              <li class="list-group-item d-flex justify-content-between align-items-start {% if step == object.current_step %}active{% endif %}">
+                <div class="ms-2 me-auto">
+                  {{ step.title }}
+                </div>
+                {% if step.id in completed_step_ids %}
+                  <i class="mdi mdi-check-circle text-success"></i>
+                {% elif step == object.current_step %}
+                  <i class="mdi mdi-arrow-right-circle"></i>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="col col-md-8">
+      <div class="card">
+        <h5 class="card-header">
+          {{ object.definition.name }}
+          {% badge object.get_status_display bg_color=object.get_status_color %}
+        </h5>
+        <div class="card-body">
+          <table class="table table-hover attr-table">
+            <tr>
+              <th scope="row">Related object</th>
+              <td>
+                {% if object.related_object %}
+                  <a href="{{ object.related_object.get_absolute_url }}">{{ object.related_object }}</a>
+                {% else %}
+                  {{ ''|placeholder }}
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Started</th>
+              <td>{{ object.created }} {% if object.started_by %}by {{ object.started_by }}{% endif %}</td>
+            </tr>
+            <tr>
+              <th scope="row">Completed</th>
+              <td>{{ object.completed|placeholder }}</td>
+            </tr>
+          </table>
+
+          {% if object.current_step %}
+            <hr>
+            <h5>Current step: {{ object.current_step.title }}</h5>
+            {% if object.current_step.instructions %}
+              {{ object.current_step.instructions|markdown }}
+            {% endif %}
+            {% for img in object.current_step.images.all %}
+              <img src="{{ img.image.url }}" alt="{{ img.caption|default:object.current_step.title }}" class="img-fluid mb-3">
+            {% endfor %}
+            {% if object.current_step.link_url %}
+              <div class="mb-3">
+                <a href="{{ object.current_step.link_url }}" class="btn btn-outline-primary"{% if object.current_step.link_url|slice:":4" == "http" %} target="_blank" rel="noopener noreferrer"{% endif %}>
+                  {{ object.current_step.link_text|default:"Open" }}
+                </a>
+              </div>
+            {% endif %}
+            {% if object.current_step.is_multi_choice %}
+              <div class="alert alert-info">
+                <i class="mdi mdi-help-circle"></i> {{ object.current_step.multi_choice_question }}
+              </div>
+            {% elif object.current_step.is_decision %}
+              <div class="alert alert-info">
+                <i class="mdi mdi-help-circle"></i> {{ object.current_step.decision_question }}
+              </div>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        {% if object.status == 'in_progress' %}
+          <div class="card-body d-flex gap-2">
+            {% if object.current_step.is_multi_choice %}
+              {% for choice in object.current_step.choices.all %}
+                <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=object.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="choice" value="{{ choice.key }}">
+                  <button type="submit" class="btn btn-outline-primary">{{ choice.label }}</button>
+                </form>
+              {% endfor %}
+            {% elif object.current_step.is_decision %}
+              <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=object.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="decision" value="true">
+                <button type="submit" class="btn btn-success">
+                  <i class="mdi mdi-check"></i> Yes, continue
+                </button>
+              </form>
+              <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=object.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="decision" value="false">
+                <button type="submit" class="btn btn-outline-secondary">
+                  <i class="mdi mdi-close"></i> No, continue
+                </button>
+              </form>
+            {% else %}
+              <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=object.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">
+                  <i class="mdi mdi-check"></i> Mark step complete &amp; continue
+                </button>
+              </form>
+            {% endif %}
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_cancel' pk=object.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger">Cancel wizard</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

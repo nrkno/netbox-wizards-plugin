@@ -1,0 +1,147 @@
+{% extends 'generic/object_edit.html' %}
+{% load i18n %}
+
+{% block form %}
+  {{ block.super }}
+
+  {% if image_formset %}
+    <div class="card mt-3">
+      <h5 class="card-header">
+        Images
+        <div class="card-actions">
+          <button type="button" id="add-image-row" class="btn btn-sm btn-outline-success">
+            <i class="mdi mdi-plus-thick"></i> Add image
+          </button>
+        </div>
+      </h5>
+      <div class="card-body">
+        {{ image_formset.management_form }}
+        <table class="table table-hover" id="image-formset-table">
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Caption</th>
+              <th>Order</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for img_form in image_formset %}
+              <tr class="image-form-row">
+                {{ img_form.id }}
+                <td>
+                  {% if img_form.instance.image %}
+                    <div class="mb-1">
+                      <img src="{{ img_form.instance.image.url }}" alt="" style="max-height: 80px;">
+                    </div>
+                  {% endif %}
+                  {{ img_form.image }}
+                </td>
+                <td>{{ img_form.caption }}</td>
+                <td>{{ img_form.order }}</td>
+                <td>{{ img_form.DELETE }}</td>
+              </tr>
+              {% if img_form.errors %}
+                <tr>
+                  <td colspan="4">
+                    <div class="text-danger">{{ img_form.errors }}</div>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if image_formset.non_form_errors %}
+          <div class="text-danger">{{ image_formset.non_form_errors }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('add-image-row').addEventListener('click', function () {
+        var tbody = document.querySelector('#image-formset-table tbody');
+        var totalInput = document.getElementById('id_images-TOTAL_FORMS');
+        var idx = parseInt(totalInput.value);
+        var row = document.createElement('tr');
+        row.className = 'image-form-row';
+        row.innerHTML =
+          '<td><input type="file" name="images-' + idx + '-image" id="id_images-' + idx + '-image"></td>' +
+          '<td><input type="text" name="images-' + idx + '-caption" maxlength="200" id="id_images-' + idx + '-caption" class="form-control"></td>' +
+          '<td><input type="number" name="images-' + idx + '-order" value="' + idx + '" min="0" id="id_images-' + idx + '-order" class="form-control" style="width:80px"></td>' +
+          '<td><input type="checkbox" name="images-' + idx + '-DELETE" id="id_images-' + idx + '-DELETE"></td>';
+        tbody.appendChild(row);
+        totalInput.value = idx + 1;
+      });
+    </script>
+  {% endif %}
+
+  {% if choice_formset %}
+    <div class="card mt-3">
+      <h5 class="card-header">
+        Choices
+        <div class="card-actions">
+          <button type="button" id="add-choice-row" class="btn btn-sm btn-outline-success">
+            <i class="mdi mdi-plus-thick"></i> Add choice
+          </button>
+        </div>
+      </h5>
+      <div class="card-body">
+        <p class="text-muted small">Only used when "Multi-choice" is checked above. Each choice becomes a button; its "Next step" determines where the wizard goes.</p>
+        {{ choice_formset.management_form }}
+        <table class="table table-hover" id="choice-formset-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Label</th>
+              <th>Order</th>
+              <th>Next step</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for choice_form in choice_formset %}
+              <tr class="choice-form-row">
+                {{ choice_form.id }}
+                <td>{{ choice_form.key }}</td>
+                <td>{{ choice_form.label }}</td>
+                <td>{{ choice_form.order }}</td>
+                <td>{{ choice_form.next_step }}</td>
+                <td>{{ choice_form.DELETE }}</td>
+              </tr>
+              {% if choice_form.errors %}
+                <tr>
+                  <td colspan="5">
+                    <div class="text-danger">{{ choice_form.errors }}</div>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if choice_formset.non_form_errors %}
+          <div class="text-danger">{{ choice_formset.non_form_errors }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('add-choice-row').addEventListener('click', function () {
+        var tbody = document.querySelector('#choice-formset-table tbody');
+        var totalInput = document.getElementById('id_choices-TOTAL_FORMS');
+        var idx = parseInt(totalInput.value);
+        var row = document.createElement('tr');
+        row.className = 'choice-form-row';
+        var nextStepSelect = document.querySelector('[name="choices-0-next_step"]');
+        var options = nextStepSelect ? nextStepSelect.innerHTML : '<option value="">---------</option>';
+        row.innerHTML =
+          '<td><input type="text" name="choices-' + idx + '-key" maxlength="100" id="id_choices-' + idx + '-key" class="form-control"></td>' +
+          '<td><input type="text" name="choices-' + idx + '-label" maxlength="200" id="id_choices-' + idx + '-label" class="form-control"></td>' +
+          '<td><input type="number" name="choices-' + idx + '-order" value="' + idx + '" min="0" id="id_choices-' + idx + '-order" class="form-control" style="width:80px"></td>' +
+          '<td><select name="choices-' + idx + '-next_step" id="id_choices-' + idx + '-next_step" class="form-select">' + options + '</select></td>' +
+          '<td><input type="checkbox" name="choices-' + idx + '-DELETE" id="id_choices-' + idx + '-DELETE"></td>';
+        tbody.appendChild(row);
+        totalInput.value = idx + 1;
+      });
+    </script>
+  {% endif %}
+{% endblock form %}

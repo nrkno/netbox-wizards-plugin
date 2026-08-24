@@ -1,0 +1,74 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block content %}
+  <div class="row">
+    <div class="col col-md-12">
+      <div class="card">
+        <h5 class="card-header">Wizard</h5>
+        <div class="card-body">
+          <table class="table table-hover attr-table">
+            <tr>
+              <th scope="row">Name</th>
+              <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Active</th>
+              <td>{% if object.is_active %}{% badge "Active" bg_color="green" %}{% else %}{% badge "Inactive" bg_color="gray" %}{% endif %}</td>
+            </tr>
+            <tr>
+              <th scope="row">Steps</th>
+              <td>{{ object.steps.count }}</td>
+            </tr>
+            {% if object.data_file %}
+              <tr>
+                <th scope="row">Data source</th>
+                <td>
+                  <a href="{{ object.data_source.get_absolute_url }}">{{ object.data_source }}</a>
+                  &mdash; <a href="{{ object.data_file.get_absolute_url }}">{{ object.data_path }}</a>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Last synced</th>
+                <td>
+                  {{ object.data_synced|placeholder }}
+                  {% if object.data_synced %}
+                    {% if object.is_synced %}
+                      {% badge "Up to date" bg_color="green" %}
+                    {% else %}
+                      {% badge "Out of date" bg_color="orange" %}
+                    {% endif %}
+                  {% else %}
+                    {% badge "Not yet synced" bg_color="gray" %}
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          </table>
+          {% if object.description %}
+            <h6>Description</h6>
+            {{ object.description|markdown }}
+          {% endif %}
+        </div>
+        <div class="card-body d-flex gap-2">
+          {% if object.is_active %}
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizarddefinition_start' pk=object.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-primary">
+                <i class="mdi mdi-play"></i> Start this wizard
+              </button>
+            </form>
+          {% endif %}
+          {% if object.data_file and perms.netbox_wizards.sync_wizarddefinition %}
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizarddefinition_sync' pk=object.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-primary">
+                <i class="mdi mdi-sync"></i> Sync from data source
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
