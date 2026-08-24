@@ -1,0 +1,62 @@
+name: "Getting started with netbox-wizards"
+slug: "getting-started"
+description: >
+  A short orientation wizard that walks you through the three things you need
+  to know to use the netbox-wizards plugin: finding the wizard library, starting
+  a wizard, and tracking your progress with the floating widget.
+is_active: true
+
+steps:
+  - key: explore-library
+    order: 10
+    title: "Explore the Wizard Library"
+    instructions: >
+      The **Wizard Library** lists all available wizard definitions. Each card
+      shows the wizard's name, description, and the number of steps it contains.
+
+
+      Browse the library to find the wizard that matches the task you want to
+      perform.
+    link_url: "/plugins/wizards/wizard-definitions/"
+    link_text: "Open Wizard Library"
+    next_step: start-wizard
+
+  - key: start-wizard
+    order: 20
+    title: "Start your first wizard"
+    instructions: >
+      To start a wizard, open its detail page from the library and click the
+      **Start wizard** button. You can also start a wizard that is linked to a
+      specific NetBox object (for example a device or a rack) directly from
+      that object's page — look for the **Wizards** panel in the right-hand
+      sidebar.
+
+
+      Once started, a **WizardInstance** is created that tracks your personal
+      progress through the steps. You can have multiple instances of the same
+      wizard running at the same time (for example, one per device you are
+      onboarding).
+    next_step: track-progress
+
+  - key: track-progress
+    order: 30
+    title: "Track progress with the floating widget"
+    instructions: >
+      As long as you have one or more active wizard instances, a small
+      **progress widget** appears in the bottom-right corner of every NetBox
+      page. It shows your current step title and a link to jump straight to
+      the wizard instance.
+
+
+      Click the widget to open your active instance, where you can:
+
+      - Read the current step's instructions and open any linked resource.
+
+      - Mark the step complete with **Advance** (or answer a Yes/No decision,
+        or pick a choice from a multi-choice step).
+
+      - **Cancel** the instance if you no longer need it.
+
+
+      The widget disappears automatically when all your instances are either
+      completed or cancelled.

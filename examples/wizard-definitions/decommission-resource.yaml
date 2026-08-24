@@ -1,0 +1,167 @@
+name: "Decommission resource"
+slug: "decommission-resource"
+description: >
+  Remove a resource (device, rack, or interface) from NetBox. Guides you
+  through checking dependencies, cleaning up references, and safely deleting
+  the object. Choose the resource type at the first step to follow the
+  appropriate path.
+is_active: true
+
+steps:
+  # ── Entry point ───────────────────────────────────────────────────────────
+  - key: select-type
+    order: 10
+    title: "Select resource type"
+    instructions: >
+      Choose the type of resource you want to remove from NetBox. The wizard
+      will guide you through the necessary checks and cleanup steps before
+      deletion.
+    is_multi_choice: true
+    multi_choice_question: "What type of resource do you want to decommission?"
+    choices:
+      - key: device
+        label: "Device"
+        next_step: device-check-dependencies
+      - key: rack
+        label: "Rack"
+        next_step: rack-check-devices
+      - key: interface
+        label: "Interface"
+        next_step: interface-disconnect-cables
+
+  # ── Device path ───────────────────────────────────────────────────────────
+  - key: device-check-dependencies
+    order: 20
+    title: "Check device dependencies"
+    instructions: >
+      Before removing the device, audit its dependencies in NetBox:
+
+
+      - **Interfaces** — are any cables connected?
+
+      - **IP addresses** — are addresses assigned to this device's interfaces?
+
+      - **Services** — does the device have any services defined?
+
+      - **Virtual machines** — if this is a hypervisor, are VMs still
+        associated with it?
+
+
+      Note each dependency so you can clean it up in the next step.
+    link_url: "/dcim/devices/"
+    link_text: "Open Devices"
+    next_step: device-remove-from-rack
+
+  - key: device-remove-from-rack
+    order: 30
+    title: "Remove device from rack"
+    instructions: >
+      Open the device in NetBox and clear its **Rack** and **Position (U)**
+      fields. Also remove any connected cables, IP address assignments, and
+      service records.
+
+
+      Once all dependencies are cleared and the device is physically removed
+      from the rack, proceed to delete the device record.
+    link_url: "/dcim/devices/"
+    link_text: "Open Devices"
+    next_step: device-delete
+
+  - key: device-delete
+    order: 40
+    title: "Delete the device"
+    instructions: >
+      Open the device in NetBox, confirm that no dependencies remain, and
+      click **Delete**. Confirm the deletion in the dialog that appears.
+
+
+      The device record, along with any remaining associated interfaces and
+      console/power ports, will be permanently removed.
+    link_url: "/dcim/devices/"
+    link_text: "Open Devices"
+
+  # ── Rack path ─────────────────────────────────────────────────────────────
+  - key: rack-check-devices
+    order: 50
+    title: "Check for devices in the rack"
+    instructions: >
+      Open the rack in NetBox and review the elevation view. Check whether any
+      devices are still mounted in the rack — all devices must be removed or
+      relocated before the rack itself can be deleted.
+    link_url: "/dcim/racks/"
+    link_text: "Open Racks"
+    is_decision: true
+    decision_question: "Have all devices been removed or relocated from the rack?"
+    next_step_if_true: rack-delete
+    next_step_if_false: rack-relocate-devices
+
+  - key: rack-relocate-devices
+    order: 55
+    title: "Relocate or decommission mounted devices"
+    instructions: >
+      For each device still mounted in the rack, either:
+
+
+      - **Relocate** it — update the device's **Rack** and **Position (U)**
+        fields in NetBox to reflect its new physical location, or
+
+      - **Decommission** it — follow the *Device* path in this wizard to
+        remove the device record entirely.
+
+
+      When all devices have been moved or removed, return to the previous step.
+    next_step: rack-check-devices
+
+  - key: rack-delete
+    order: 60
+    title: "Delete the rack"
+    instructions: >
+      Open the rack in NetBox, confirm that the elevation view is empty, and
+      click **Delete**. Confirm the deletion in the dialog.
+
+
+      Any rack reservations associated with this rack will also be removed.
+    link_url: "/dcim/racks/"
+    link_text: "Open Racks"
+
+  # ── Interface path ────────────────────────────────────────────────────────
+  - key: interface-disconnect-cables
+    order: 70
+    title: "Disconnect cables"
+    instructions: >
+      Open the interface in NetBox. If a cable is connected, click on the cable
+      and delete it, or use the **Disconnect** action on the interface. A cable
+      cannot be left dangling after the interface is removed, so this step must
+      be completed first.
+    link_url: "/dcim/interfaces/"
+    link_text: "Open Interfaces"
+    next_step: interface-remove-ip-assignments
+
+  - key: interface-remove-ip-assignments
+    order: 80
+    title: "Remove IP address assignments"
+    instructions: >
+      Navigate to **IPAM → IP Addresses** and search for any addresses assigned
+      to this interface. For each one, either:
+
+
+      - **Reassign** it to a different interface if it will continue to be
+        used, or
+
+      - **Delete** it if the address is no longer needed.
+
+
+      Also remove any VLAN assignments (tagged or untagged) from the interface.
+    link_url: "/ipam/ip-addresses/"
+    link_text: "Open IP Addresses"
+    next_step: interface-delete
+
+  - key: interface-delete
+    order: 90
+    title: "Delete the interface"
+    instructions: >
+      Return to the interface in NetBox. Confirm that it has no connected
+      cables and no IP addresses or VLAN assignments remaining, then click
+      **Delete** and confirm.
+    link_url: "/dcim/interfaces/"
+    link_text: "Open Interfaces"

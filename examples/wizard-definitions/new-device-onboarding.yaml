@@ -1,0 +1,133 @@
+name: "New device onboarding"
+slug: "new-device-onboarding"
+description: >
+  Guide for adding a new device to NetBox and ensuring it is correctly racked,
+  cabled, and reachable. Covers device creation, rack assignment, interface
+  configuration, IP addressing, and connectivity verification.
+is_active: true
+
+steps:
+  # ── Step 1: Create the device ─────────────────────────────────────────────
+  - key: create-device
+    order: 10
+    title: "Create the device in NetBox"
+    instructions: >
+      Open the **Add device** form and fill in at minimum:
+
+
+      - **Name** — the device's hostname
+
+      - **Device type** — select the correct make and model
+
+      - **Site** / **Location** — where the device will live
+
+      - **Status** — set to *Planned* or *Staged* until it is physically
+        installed and live
+
+
+      Save the device record before continuing.
+    link_url: "/dcim/devices/add/"
+    link_text: "Add device"
+    next_step: assign-to-rack
+
+  # ── Step 2: Assign to rack (decision) ─────────────────────────────────────
+  - key: assign-to-rack
+    order: 20
+    title: "Assign to rack"
+    instructions: >
+      Open the device in NetBox and set its **Rack** and **Position (U)**
+      fields to reflect the physical location.
+
+
+      If the device is not yet physically installed in the rack, schedule the
+      installation before recording its rack position.
+    link_url: "/dcim/devices/"
+    link_text: "Open Devices"
+    is_decision: true
+    decision_question: "Is the device already physically installed in a rack?"
+    next_step_if_true: configure-interfaces
+    next_step_if_false: schedule-installation
+
+  - key: schedule-installation
+    order: 25
+    title: "Schedule physical installation"
+    instructions: >
+      Arrange for the device to be physically installed in the rack. This
+      typically involves:
+
+
+      - Booking a data-centre visit or coordinating with on-site staff
+
+      - Confirming the target rack position (U slot) is free
+
+      - Preparing rack rails, mounting hardware, and cables
+
+
+      Once the device is racked, return to the previous step and record the
+      rack and position in NetBox.
+    next_step: assign-to-rack
+
+  # ── Step 3: Configure interfaces ──────────────────────────────────────────
+  - key: configure-interfaces
+    order: 30
+    title: "Configure interfaces"
+    instructions: >
+      Navigate to the device's **Interfaces** tab. For each physical and
+      logical interface you need:
+
+
+      1. Verify the interface exists (it is usually auto-created from the
+         device type template). Add any missing ones.
+
+      2. Set the interface **type**, **speed**, and **duplex** as appropriate.
+
+      3. Connect cables where applicable — use **Add cable** on each interface
+         to record physical cabling.
+
+
+      You do not need to assign IP addresses here; that is covered in the next
+      step.
+    link_url: "/dcim/interfaces/"
+    link_text: "Open Interfaces"
+    next_step: assign-ip-addresses
+
+  # ── Step 4: Assign IP addresses ───────────────────────────────────────────
+  - key: assign-ip-addresses
+    order: 40
+    title: "Assign IP addresses"
+    instructions: >
+      For each interface that requires an IP address:
+
+
+      1. Go to **IPAM → IP Addresses → Add** and create the address (or
+         allocate one from an existing prefix).
+
+      2. Set the **Assigned object** to the relevant interface on this device.
+
+
+      Also set the device's **Primary IPv4** (and/or **Primary IPv6**) field
+      on the device edit form so NetBox can use it for lookups and automation.
+    link_url: "/ipam/ip-addresses/add/"
+    link_text: "Add IP address"
+    next_step: verify-connectivity
+
+  # ── Step 5: Verify connectivity ───────────────────────────────────────────
+  - key: verify-connectivity
+    order: 50
+    title: "Verify connectivity"
+    instructions: >
+      Confirm that the device is reachable and its configuration matches what
+      is recorded in NetBox:
+
+
+      - Ping or SSH to the device's primary IP address.
+
+      - Verify that the hostname, interfaces, and IP addresses match the
+        NetBox records.
+
+      - Update the device **Status** to *Active* once connectivity is
+        confirmed.
+
+
+      Onboarding is complete when the device is live, all interfaces are
+      documented, and IP addresses are correctly assigned.
