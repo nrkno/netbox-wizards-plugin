@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netbox-wizards"
+version = "0.1.0"
+description = "NetBox plugin providing a library of customizable, step-by-step guided wizards for multi-step NetBox processes."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/nrkno/netbox-wizards-plugin"
+
+[tool.setuptools.packages.find]
+include = ["netbox_wizards*"]
+
+[tool.setuptools.package-data]
+netbox_wizards = ["templates/**"]
