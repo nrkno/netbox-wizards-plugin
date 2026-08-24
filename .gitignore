@@ -7,3 +7,7 @@ build/
 *.egg
 .venv/
 *.sqlite3
+
+# Claude
+.superpowers/
+docs/superpowers/
