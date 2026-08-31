@@ -60,7 +60,6 @@ steps:
       fields. Also remove any connected cables, IP address assignments, and
       service records.
 
-
       Once all dependencies are cleared and the device is physically removed
       from the rack, proceed to delete the device record.
     link_url: "/dcim/devices/"
