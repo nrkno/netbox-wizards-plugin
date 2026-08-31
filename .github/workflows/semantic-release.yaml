@@ -13,4 +13,4 @@ jobs:
     uses: nrkno/github-workflow-semantic-release/.github/workflows/workflow.yaml@v5.0.2
     secrets: inherit
     with:
-        lint-enabled: 'false'
+        lint-enabled: 'False'
