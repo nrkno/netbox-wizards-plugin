@@ -4,7 +4,7 @@ files synced from a NetBox DataSource, so "standard"/canonical wizards can
 be version-controlled and imported or updated from a git repository (or any
 other configured DataSource) instead of being built by hand in the UI.
 
-See ../../wizard-definitions/ in this repository for a working example,
+See ../../examples/wizard-definitions/ in this repository for a working example,
 and the plugin's README.md for the full file schema.
 
 Expected file structure::

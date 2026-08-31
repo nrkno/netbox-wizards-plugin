@@ -17,7 +17,7 @@ Developed and tested against **NetBox v4.5.9**. Requires **NetBox 4.4.0** or lat
 
 ## Installation
 
-Install the package from PyPI:
+Install the package:
 
 ```bash
 pip install netbox-wizards
