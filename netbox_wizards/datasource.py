@@ -49,6 +49,8 @@ import posixpath
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 
+from .validators import validate_safe_link_url, validate_safe_markdown
+
 logger = logging.getLogger(__name__)
 
 # Plain fields copied directly from each step's data.
@@ -66,6 +68,7 @@ def parse_definition_data(raw_data):
         raise ValidationError("Wizard definition file must contain a YAML/JSON mapping (object).")
     if not raw_data.get("name"):
         raise ValidationError("Wizard definition file must specify a 'name'.")
+    validate_safe_markdown(raw_data.get("description", ""))
 
     steps_data = raw_data.get("steps") or []
     if not isinstance(steps_data, list):
@@ -88,6 +91,8 @@ def _validate_steps_data(steps_data):
         seen_keys.add(key)
         if not step_data.get("title"):
             raise ValidationError(f"Step '{key}' is missing a required 'title'.")
+        validate_safe_markdown(step_data.get("instructions", ""))
+        validate_safe_link_url(step_data.get("link_url", ""))
 
     for step_data in steps_data:
         for field in _STEP_LINK_FIELDS:
@@ -182,13 +187,15 @@ def _sync_step_choices(step, choices_data, steps_by_key):
     for order, choice_data in enumerate(choices_data):
         target_key = choice_data.get("next_step")
         target = steps_by_key.get(target_key) if target_key else None
-        WizardStepChoice.objects.create(
+        choice = WizardStepChoice(
             step=step,
             key=choice_data["key"],
             label=choice_data.get("label", choice_data["key"]),
             order=order,
             next_step=target,
         )
+        choice.full_clean()
+        choice.save()
 
 
 def _sync_steps(definition, steps_data, *, data_file=None):
@@ -208,6 +215,7 @@ def _sync_steps(definition, steps_data, *, data_file=None):
             if field in step_data:
                 setattr(step, field, step_data[field])
 
+        step.full_clean()
         step.save()
 
         if "image" in step_data:
