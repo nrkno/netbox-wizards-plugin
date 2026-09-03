@@ -51,9 +51,9 @@ Restart the NetBox application server. The plugin registers its middleware
    step sequence. Set the `order`, `title`, and `instructions` for each step.
    Use `next_step` to link steps together; leave it unset on the last step.
 
-Wizard descriptions and instructions accept Markdown, but reject raw HTML and
-executable link schemes. Step links must use HTTP(S) or a root-relative NetBox
-path beginning with `/`.
+Wizard descriptions and instructions accept Markdown and inert formatting HTML,
+but reject active HTML elements or attributes and executable link schemes. Step
+links must use HTTP(S) or a root-relative NetBox path beginning with `/`.
 
 ### Start a wizard
 
