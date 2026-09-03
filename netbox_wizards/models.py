@@ -10,6 +10,7 @@ from netbox.models import NetBoxModel
 from netbox.models.features import SyncedDataMixin
 
 from .choices import WizardInstanceStatusChoices
+from .validators import validate_safe_link_url, validate_safe_markdown
 
 
 class WizardDefinition(SyncedDataMixin, NetBoxModel):
@@ -34,6 +35,7 @@ class WizardDefinition(SyncedDataMixin, NetBoxModel):
     description = models.TextField(
         blank=True,
         help_text="Shown at the top of the wizard. Supports NetBox markdown (links, formatting).",
+        validators=[validate_safe_markdown],
     )
     is_active = models.BooleanField(
         default=True,
@@ -99,11 +101,13 @@ class WizardStep(NetBoxModel):
     instructions = models.TextField(
         blank=True,
         help_text="What the user needs to do for this step. Supports NetBox markdown, including links.",
+        validators=[validate_safe_markdown],
     )
     link_url = models.CharField(
         max_length=500,
         blank=True,
         help_text="Optional URL for this step, e.g. a NetBox Script, a NetBox object, or an external document.",
+        validators=[validate_safe_link_url],
     )
     link_text = models.CharField(max_length=100, blank=True, default="Open")
 
