@@ -64,7 +64,10 @@ class WizardDefinition(SyncedDataMixin, NetBoxModel):
         """
         from . import datasource
 
-        data = datasource.parse_definition_data(self.data_file.get_data())
+        try:
+            data = datasource.parse_definition_data(self.data_file.get_data())
+        except ValidationError as error:
+            raise self._data_file_validation_error(error) from error
 
         self.name = data.get("name") or self.name
         self.slug = data.get("slug") or self.slug or slugify(self.name)
@@ -81,8 +84,18 @@ class WizardDefinition(SyncedDataMixin, NetBoxModel):
         if data is not None:
             from . import datasource
 
-            datasource.apply_synced_definition(self, data, data_file=self.data_file)
-            del self._synced_data
+            try:
+                datasource.apply_synced_definition(self, data, data_file=self.data_file)
+            except ValidationError as error:
+                raise self._data_file_validation_error(error) from error
+            finally:
+                del self._synced_data
+
+    def _data_file_validation_error(self, error):
+        path = self.data_file.path if self.data_file_id else self.data_path
+        return ValidationError(
+            f"Wizard definition file '{path or 'unknown'}': {'; '.join(error.messages)}"
+        )
 
 
 class WizardStep(NetBoxModel):

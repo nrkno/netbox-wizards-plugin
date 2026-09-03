@@ -68,7 +68,7 @@ def parse_definition_data(raw_data):
         raise ValidationError("Wizard definition file must contain a YAML/JSON mapping (object).")
     if not raw_data.get("name"):
         raise ValidationError("Wizard definition file must specify a 'name'.")
-    validate_safe_markdown(raw_data.get("description", ""))
+    _validate_source_field("Wizard description", validate_safe_markdown, raw_data.get("description", ""))
 
     steps_data = raw_data.get("steps") or []
     if not isinstance(steps_data, list):
@@ -91,8 +91,16 @@ def _validate_steps_data(steps_data):
         seen_keys.add(key)
         if not step_data.get("title"):
             raise ValidationError(f"Step '{key}' is missing a required 'title'.")
-        validate_safe_markdown(step_data.get("instructions", ""))
-        validate_safe_link_url(step_data.get("link_url", ""))
+        _validate_source_field(
+            f"Step '{key}' instructions",
+            validate_safe_markdown,
+            step_data.get("instructions", ""),
+        )
+        _validate_source_field(
+            f"Step '{key}' link_url",
+            validate_safe_link_url,
+            step_data.get("link_url", ""),
+        )
 
     for step_data in steps_data:
         for field in _STEP_LINK_FIELDS:
@@ -123,6 +131,13 @@ def _validate_steps_data(steps_data):
                     raise ValidationError(
                         f"Step '{step_data['key']}' choice '{ckey}' references unknown step '{target}'."
                     )
+
+
+def _validate_source_field(field_label, validator, value):
+    try:
+        validator(value)
+    except ValidationError as error:
+        raise ValidationError(f"{field_label}: {'; '.join(error.messages)}") from error
 
 
 def apply_synced_definition(definition, data, *, data_file=None):

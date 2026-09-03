@@ -37,13 +37,15 @@ class SafeMarkdownValidatorTest(TestCase):
         validate_safe_markdown("Run the [local script](/extras/scripts/run/).")
         validate_safe_markdown("See [details](details/) or [this section](#details).")
         validate_safe_markdown("Contact <operator@example.com>.")
+        validate_safe_markdown("Press <kbd>Enter</kbd><br>Then continue.")
 
-    def test_rejects_raw_html(self):
+    def test_rejects_active_html(self):
         for value in (
             "<script>alert(1)</script>",
             '<img src="x" onerror="alert(1)">',
             "<svg/onload=alert(1)>",
-            "<!-- hidden manipulation -->",
+            '<a href="javascript:alert(1)">click</a>',
+            '<div style="position: fixed">overlay</div>',
         ):
             with self.subTest(value=value):
                 with self.assertRaises(ValidationError):
