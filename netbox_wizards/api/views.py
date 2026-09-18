@@ -1,10 +1,17 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from netbox.api.viewsets import NetBoxModelViewSet
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..helpers import advance_wizard, cancel_wizard
 from ..models import WizardDefinition, WizardInstance, WizardStep
-from .serializers import WizardDefinitionSerializer, WizardInstanceSerializer, WizardStepSerializer
+from .serializers import (
+    WizardAdvanceSerializer,
+    WizardDefinitionSerializer,
+    WizardInstanceSerializer,
+    WizardStepSerializer,
+)
 
 
 class WizardDefinitionViewSet(NetBoxModelViewSet):
@@ -31,11 +38,21 @@ class WizardInstanceViewSet(NetBoxModelViewSet):
     def advance(self, request, pk=None):
         instance = self.get_object()
         user = request.user if request.user.is_authenticated else None
-        decision = request.data.get("decision")
-        if isinstance(decision, str):
-            decision = decision.lower() == "true"
-        choice = request.data.get("choice")
-        advance_wizard(instance, user=user, decision=decision, choice=choice)
+        current_step = instance.current_step
+        if current_step and current_step.is_text_input:
+            input_data = {"answer": request.data.get("answer", "")}
+        elif current_step and current_step.is_multi_choice:
+            input_data = {"choice": request.data.get("choice")}
+        elif current_step and current_step.is_decision:
+            input_data = {"decision": request.data.get("decision")}
+        else:
+            input_data = {}
+        input_serializer = WizardAdvanceSerializer(data=input_data)
+        input_serializer.is_valid(raise_exception=True)
+        try:
+            advance_wizard(instance, user=user, **input_serializer.validated_data)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError({"detail": error.messages}) from error
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 

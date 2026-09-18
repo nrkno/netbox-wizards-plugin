@@ -1,3 +1,6 @@
+import re
+
+import regex
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -11,6 +14,8 @@ from netbox.models.features import SyncedDataMixin
 
 from .choices import WizardInstanceStatusChoices
 from .validators import validate_safe_link_url, validate_safe_markdown
+
+MAX_ANSWER_LENGTH = 2000
 
 
 class WizardDefinition(SyncedDataMixin, NetBoxModel):
@@ -172,7 +177,7 @@ class WizardStep(NetBoxModel):
 
     # Multi-choice branching: if is_multi_choice is set, the user picks from a
     # list of WizardStepChoice options, each pointing to a different next step.
-    # Mutually exclusive with is_decision.
+    # Mutually exclusive with decision and text-input modes.
     is_multi_choice = models.BooleanField(
         default=False,
         help_text="If checked, the user picks from a list of choices when completing this step, "
@@ -183,6 +188,33 @@ class WizardStep(NetBoxModel):
         blank=True,
         help_text="The prompt shown above the choice buttons, e.g. 'What type of resource do you want to delete?'.",
     )
+    is_text_input = models.BooleanField(
+        default=False,
+        help_text="If checked, the user must enter a text answer before continuing.",
+    )
+    answer_key = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Stable key used to reference this step's stored answer as '{{ answers.key }}'.",
+    )
+    text_input_prompt = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Label shown above the text input.",
+    )
+    text_input_placeholder = models.CharField(max_length=200, blank=True)
+    text_input_help = models.CharField(max_length=500, blank=True)
+    text_input_required = models.BooleanField(default=True)
+    text_input_regex = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional regular expression which the complete answer must match.",
+    )
+    text_input_validation_message = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Message shown when the answer does not match the validation expression.",
+    )
 
     class Meta:
         ordering = ("definition", "order", "pk")
@@ -191,6 +223,11 @@ class WizardStep(NetBoxModel):
                 fields=("definition", "key"),
                 condition=~models.Q(key=""),
                 name="wizards_unique_definition_key",
+            ),
+            models.UniqueConstraint(
+                fields=("definition", "answer_key"),
+                condition=~models.Q(answer_key=""),
+                name="wizards_unique_definition_answer_key",
             ),
         ]
 
@@ -203,8 +240,22 @@ class WizardStep(NetBoxModel):
 
     def clean(self):
         super().clean()
-        if self.is_decision and self.is_multi_choice:
-            raise ValidationError("A step cannot be both a yes/no decision and a multi-choice step.")
+        if sum((self.is_decision, self.is_multi_choice, self.is_text_input)) > 1:
+            raise ValidationError("A step can only use one of decision, multi-choice, or text-input mode.")
+        if self.is_text_input:
+            if not self.answer_key:
+                raise ValidationError({"answer_key": "Text-input steps require an answer key."})
+            if not self.text_input_prompt:
+                raise ValidationError({"text_input_prompt": "Text-input steps require a prompt."})
+        if self.answer_key and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", self.answer_key):
+            raise ValidationError({
+                "answer_key": "Use letters, numbers, and underscores, starting with a letter."
+            })
+        if self.text_input_regex:
+            try:
+                regex.compile(self.text_input_regex)
+            except regex.error as error:
+                raise ValidationError({"text_input_regex": f"Invalid regular expression: {error}"}) from error
         for field_name in ("next_step", "next_step_if_true", "next_step_if_false"):
             target = getattr(self, field_name)
             if target is None:
@@ -305,6 +356,14 @@ class WizardInstance(NetBoxModel):
         self.completed = timezone.now()
         self.save()
 
+    @property
+    def rendered_current_instructions(self):
+        if self.current_step is None:
+            return ""
+        from .helpers import render_step_instructions
+
+        return render_step_instructions(self, self.current_step)
+
 
 class WizardStepImage(models.Model):
     """An image attached to a WizardStep, displayed in order."""
@@ -327,6 +386,12 @@ class WizardStepChoice(models.Model):
     step = models.ForeignKey(to=WizardStep, on_delete=models.CASCADE, related_name="choices")
     key = models.CharField(max_length=100, help_text="Stable identifier, unique within the parent step.")
     label = models.CharField(max_length=200, help_text="Button text shown to the user.")
+    answer_value = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="Stored answer value. If unset, the choice key is stored.",
+    )
     order = models.PositiveIntegerField(default=0)
     next_step = models.ForeignKey(
         to=WizardStep,
@@ -375,6 +440,12 @@ class WizardStepProgress(models.Model):
     )
     choice_key = models.CharField(
         max_length=100, blank=True, default="", help_text="The choice key selected, if this was a multi-choice step."
+    )
+    answer_value = models.CharField(
+        max_length=MAX_ANSWER_LENGTH,
+        null=True,
+        blank=True,
+        help_text="The answer captured for this step, if it produces a stored answer.",
     )
 
     class Meta:

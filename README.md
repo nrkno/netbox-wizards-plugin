@@ -5,7 +5,7 @@ A NetBox plugin providing a library of customizable, step-by-step guided wizards
 ## Features
 
 - **Step-by-step wizards** — author ordered checklists with per-step instructions, links, and images to guide users through complex processes such as hardware onboarding, cabling, or decommissioning.
-- **Decision and multi-choice branching** — steps can present a Yes/No decision prompt or a list of labelled choices that each route to a different part of the wizard.
+- **Decisions, choices, and stored text** — steps can present a Yes/No decision, route by a labelled choice, or validate and store text for use in later instructions.
 - **Floating progress widget** — an always-visible overlay on every NetBox page shows the user's active wizard step and lets them resume from wherever they are in the UI.
 - **DataSource sync** — wizard definitions can be authored as YAML files, version-controlled in a git repository, and synced into NetBox automatically via a NetBox DataSource.
 - **REST API** — full CRUD access to definitions, steps, and instances, plus custom `advance` and `cancel` actions on instances.
@@ -14,6 +14,8 @@ A NetBox plugin providing a library of customizable, step-by-step guided wizards
 ## Compatibility
 
 Developed and tested against **NetBox v4.5.9**. Requires **NetBox 4.4.0** or later. Python 3.10+.
+The package installs the `regex` library, which is used to enforce time-bounded
+validation of administrator-configured text-input expressions.
 
 ## Installation
 
@@ -54,6 +56,19 @@ Restart the NetBox application server. The plugin registers its middleware
 Wizard descriptions and instructions accept Markdown and inert formatting HTML,
 but reject active HTML elements or attributes and executable link schemes. Step
 links must use HTTP(S) or a root-relative NetBox path beginning with `/`.
+
+Text-input and multi-choice steps may assign an `answer_key`. Later instructions
+can insert the captured value with `{{ answers.answer_key }}`. Values are
+inserted as escaped literal text, never evaluated as templates or raw
+Markdown/HTML. Authored formatting around a token still applies, so
+`**{{ answers.service_name }}**` renders the safely escaped answer in bold.
+Tokens in structural positions such as link destinations are not populated.
+If an answer is unavailable, the token remains visible.
+
+Text answers are limited to 2,000 characters in the browser, REST API, wizard
+engine, and persistence model. Regular-expression matching has a strict
+50-millisecond timeout; a timed-out expression rejects the answer and asks the
+user to contact an administrator.
 
 ### Start a wizard
 
@@ -121,12 +136,16 @@ Request body (all fields optional):
 ```json
 {
   "decision": true,
-  "choice": "rack"
+  "choice": "rack",
+  "answer": "payments-api"
 }
 ```
 
 Pass `decision` (`true` or `false`) for decision steps, or `choice` (a choice
-key string) for multi-choice steps. Both fields are ignored on plain steps.
+key string) for multi-choice steps. Pass `answer` for text-input steps. The
+required field for the current mode is validated and invalid requests return
+HTTP 400. Instance responses include an `answers` object keyed by configured
+answer keys.
 
 **Cancel** — mark the instance as cancelled:
 

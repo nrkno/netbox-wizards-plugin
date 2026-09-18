@@ -86,13 +86,19 @@
         </div>
       </h5>
       <div class="card-body">
-        <p class="text-muted small">Only used when "Multi-choice" is checked above. Each choice becomes a button; its "Next step" determines where the wizard goes.</p>
+        <p class="text-muted small">
+          Only used when "Multi-choice" is checked above. Each choice becomes a button; its "Next step"
+          determines where the wizard goes. Keep "Use key" checked for the default behavior, or uncheck it
+          to store the Answer value (which may intentionally be empty).
+        </p>
         {{ choice_formset.management_form }}
         <table class="table table-hover" id="choice-formset-table">
           <thead>
             <tr>
               <th>Key</th>
               <th>Label</th>
+              <th>Use key</th>
+              <th>Answer value</th>
               <th>Order</th>
               <th>Next step</th>
               <th>Delete</th>
@@ -104,13 +110,15 @@
                 {{ choice_form.id }}
                 <td>{{ choice_form.key }}</td>
                 <td>{{ choice_form.label }}</td>
+                <td>{{ choice_form.use_key_as_answer }}</td>
+                <td>{{ choice_form.answer_value }}</td>
                 <td>{{ choice_form.order }}</td>
                 <td>{{ choice_form.next_step }}</td>
                 <td>{{ choice_form.DELETE }}</td>
               </tr>
               {% if choice_form.errors %}
                 <tr>
-                  <td colspan="5">
+                  <td colspan="7">
                     <div class="text-danger">{{ choice_form.errors }}</div>
                   </td>
                 </tr>
@@ -136,6 +144,8 @@
         row.innerHTML =
           '<td><input type="text" name="choices-' + idx + '-key" maxlength="100" id="id_choices-' + idx + '-key" class="form-control"></td>' +
           '<td><input type="text" name="choices-' + idx + '-label" maxlength="200" id="id_choices-' + idx + '-label" class="form-control"></td>' +
+          '<td><input type="checkbox" name="choices-' + idx + '-use_key_as_answer" id="id_choices-' + idx + '-use_key_as_answer" checked></td>' +
+          '<td><input type="text" name="choices-' + idx + '-answer_value" maxlength="500" id="id_choices-' + idx + '-answer_value" class="form-control"></td>' +
           '<td><input type="number" name="choices-' + idx + '-order" value="' + idx + '" min="0" id="id_choices-' + idx + '-order" class="form-control" style="width:80px"></td>' +
           '<td><select name="choices-' + idx + '-next_step" id="id_choices-' + idx + '-next_step" class="form-select">' + options + '</select></td>' +
           '<td><input type="checkbox" name="choices-' + idx + '-DELETE" id="id_choices-' + idx + '-DELETE"></td>';

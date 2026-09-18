@@ -108,7 +108,7 @@
       {% if inst.current_step %}
         <div class="card-body pt-0">
           {% if inst.current_step.instructions %}
-            {{ inst.current_step.instructions|markdown }}
+            {{ inst.rendered_current_instructions }}
           {% endif %}
           {% for img in inst.current_step.images.all %}
             <img src="{{ img.image.url }}" alt="{{ img.caption|default:inst.current_step.title }}" class="rounded mb-2">
@@ -134,7 +134,23 @@
 
       {% if inst.status == 'in_progress' %}
         <div class="card-body pt-0 d-flex flex-wrap gap-2">
-          {% if inst.current_step.is_multi_choice %}
+          {% if inst.current_step.is_text_input %}
+            <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=inst.pk %}" class="flex-grow-1">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <label for="wizard-widget-answer-{{ inst.pk }}" class="form-label small">{{ inst.current_step.text_input_prompt }}</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="wizard-widget-answer-{{ inst.pk }}" name="answer" class="form-control"
+                       maxlength="2000"
+                       placeholder="{{ inst.current_step.text_input_placeholder }}"
+                       {% if inst.current_step.text_input_required %}required{% endif %}>
+                <button type="submit" class="btn btn-success">Continue</button>
+              </div>
+              {% if inst.current_step.text_input_help %}
+                <div class="form-text">{{ inst.current_step.text_input_help }}</div>
+              {% endif %}
+            </form>
+          {% elif inst.current_step.is_multi_choice %}
             {% for choice in inst.current_step.choices.all %}
               <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_advance' pk=inst.pk %}">
                 {% csrf_token %}

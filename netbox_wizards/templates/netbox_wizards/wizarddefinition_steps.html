@@ -26,7 +26,17 @@
                     {% if step.instructions %}{{ step.instructions|markdown }}{% endif %}
                     {% for img in step.images.all %}<img src="{{ img.image.url }}" alt="{{ img.caption|default:step.title }}" class="img-fluid mb-1" style="max-width: 300px;">{% endfor %}
                     {% if step.link_url %}<div><a href="{{ step.link_url }}"{% if step.link_url|slice:":4" == "http" %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ step.link_text|default:"Open" }}</a></div>{% endif %}
-                    {% if step.is_multi_choice %}
+                    {% if step.is_text_input %}
+                      <div class="mt-2">
+                        {% badge "Text input" bg_color="blue" %}
+                        <span class="fw-bold">{{ step.text_input_prompt }}</span>
+                        <code>{{ step.answer_key }}</code>
+                      </div>
+                      <div class="mt-2 small">
+                        <span class="text-muted">Next:</span>
+                        {% if step.next_step %}{{ step.next_step.title }}{% else %}<span class="text-muted">ends the wizard</span>{% endif %}
+                      </div>
+                    {% elif step.is_multi_choice %}
                       <div class="mt-2">
                         {% badge "Multi-choice" bg_color="purple" %}
                         <span class="fw-bold">{{ step.multi_choice_question }}</span>

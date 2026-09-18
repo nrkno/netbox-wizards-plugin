@@ -4,7 +4,13 @@ from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm
 from utilities.forms.rendering import FieldSet
 
 from .choices import WizardInstanceStatusChoices
-from .models import WizardDefinition, WizardInstance, WizardStep, WizardStepChoice, WizardStepImage
+from .models import (
+    WizardDefinition,
+    WizardInstance,
+    WizardStep,
+    WizardStepChoice,
+    WizardStepImage,
+)
 
 WizardStepImageFormSet = forms.inlineformset_factory(
     WizardStep,
@@ -14,11 +20,44 @@ WizardStepImageFormSet = forms.inlineformset_factory(
     can_delete=True,
 )
 
+
+class WizardStepChoiceForm(forms.ModelForm):
+    use_key_as_answer = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Use key",
+        help_text="Store the choice key instead of the Answer value.",
+    )
+    answer_value = forms.CharField(
+        required=False,
+        empty_value="",
+        max_length=500,
+        label="Answer value",
+        help_text="May be intentionally empty when Use key is unchecked.",
+    )
+
+    class Meta:
+        model = WizardStepChoice
+        fields = ("key", "label", "use_key_as_answer", "answer_value", "order", "next_step")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.initial["use_key_as_answer"] = not self.instance.pk or self.instance.answer_value is None
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("use_key_as_answer"):
+            cleaned_data["answer_value"] = None
+        return cleaned_data
+
+
 WizardStepChoiceFormSet = forms.inlineformset_factory(
     WizardStep,
     WizardStepChoice,
+    form=WizardStepChoiceForm,
     fk_name="step",
-    fields=("key", "label", "order", "next_step"),
+    fields=("key", "label", "use_key_as_answer", "answer_value", "order", "next_step"),
     extra=2,
     can_delete=True,
 )
@@ -64,6 +103,14 @@ class WizardStepForm(NetBoxModelForm):
             "next_step_if_false",
             "is_multi_choice",
             "multi_choice_question",
+            "is_text_input",
+            "answer_key",
+            "text_input_prompt",
+            "text_input_placeholder",
+            "text_input_help",
+            "text_input_required",
+            "text_input_regex",
+            "text_input_validation_message",
             "tags",
         )
 
