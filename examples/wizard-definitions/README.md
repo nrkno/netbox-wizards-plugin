@@ -40,27 +40,45 @@ steps:
     link_text: "Open Devices"     # optional; label for the link button
     next_step: step-two      # optional; key of the next step; omit to end the wizard here
 
-  # Decision step — shows a Yes / No prompt to the user
+  # Text-input step — validates and stores a value for later instructions
   - key: step-two
     order: 20
+    title: "Name the service"
+    is_text_input: true
+    answer_key: service_name
+    text_input_prompt: "Service name"
+    text_input_placeholder: "payments-api"
+    text_input_help: "Use lowercase letters, numbers, and hyphens."
+    text_input_required: true
+    text_input_regex: "[a-z][a-z0-9-]+"
+    text_input_validation_message: "Use a lowercase service name."
+    next_step: step-three
+
+  # Decision step — shows a Yes / No prompt to the user
+  - key: step-three
+    order: 30
     title: "Was that successful?"
+    instructions: "Continue configuring {{ answers.service_name }}."
     is_decision: true
     decision_question: "Did the operation complete without errors?"
-    next_step_if_true: step-three   # key of step to go to on "Yes"
+    next_step_if_true: step-four   # key of step to go to on "Yes"
     next_step_if_false: step-one    # key of step to go to on "No"; omit to end wizard
 
   # Multi-choice step — shows a list of labelled options
-  - key: step-three
-    order: 30
+  - key: step-four
+    order: 40
     title: "Select the next action"
     is_multi_choice: true
+    answer_key: environment_suffix
     multi_choice_question: "What would you like to do next?"
     choices:
       - key: option-a
         label: "Option A"
+        value: ""                 # explicitly store an empty suffix
         next_step: step-four-a   # key of next step for this choice
       - key: option-b
         label: "Option B"
+        value: "-test"            # stored value may differ from routing key
         next_step: step-four-b
       - key: option-c
         label: "Option C"
@@ -91,9 +109,30 @@ steps:
 | `is_multi_choice` | step | no | `true` to show a list of labelled choices |
 | `multi_choice_question` | step | no | Question text displayed above the choices |
 | `choices` | step | no | List of choice objects (see below) |
+| `is_text_input` | step | no | `true` to show a text field; mutually exclusive with decision and multi-choice modes |
+| `answer_key` | step | text: yes; otherwise no | Stable key used by later `{{ answers.key }}` tokens; letters, numbers, and underscores only |
+| `text_input_prompt` | step | text: yes | Label displayed for the text field |
+| `text_input_placeholder` | step | no | Placeholder displayed in the text field |
+| `text_input_help` | step | no | Additional help displayed with the prompt |
+| `text_input_required` | step | no | Defaults to `true`; when `false`, an empty answer is allowed |
+| `text_input_regex` | step | no | Regular expression matched against the complete answer with a 50 ms timeout |
+| `text_input_validation_message` | step | no | User-facing message for a regex mismatch |
 | `key` | choice | yes | Stable string identifier; unique within the step |
 | `label` | choice | no | Display label; defaults to the choice `key` |
+| `value` | choice | no | Stored answer value; if omitted, defaults to the choice `key`. An explicit empty string is preserved |
 | `next_step` | choice | no | Key of the step to go to when this choice is selected; omit to end wizard |
+
+### Stored-answer interpolation
+
+Use `{{ answers.<answer_key> }}` in a later step's `instructions`. This is a
+restricted token replacement, not Django/Jinja template evaluation. Captured
+values are inserted after Markdown rendering and escaped as literal text.
+Formatting authored around a token, such as `**{{ answers.service_name }}**`,
+is preserved, but tokens in structural positions such as link destinations
+are not populated. A token whose answer has not been captured is left
+unchanged so missing data remains obvious.
+
+Text answers have a fixed maximum length of 2,000 characters.
 
 ## Examples in this folder
 

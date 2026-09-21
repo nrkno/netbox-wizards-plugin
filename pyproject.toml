@@ -9,7 +9,9 @@ description = "NetBox plugin providing a library of customizable, step-by-step g
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-dependencies = []
+dependencies = [
+    "regex>=2024.11.6",
+]
 
 [project.urls]
 Repository = "https://github.com/nrkno/netbox-wizards-plugin"

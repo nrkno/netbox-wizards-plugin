@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
@@ -205,14 +206,20 @@ class WizardInstanceAdvanceView(PermissionRequiredMixin, View):
     permission_required = "netbox_wizards.change_wizardinstance"
 
     def post(self, request, pk):
-        instance = get_object_or_404(WizardInstance, pk=pk)
+        instance = get_object_or_404(
+            WizardInstance.objects.restrict(request.user, "change"),
+            pk=pk,
+        )
         current_step = instance.current_step
         return_url = request.POST.get("next") or instance.get_absolute_url()
 
         decision = None
         choice = None
+        answer = None
 
-        if current_step and current_step.is_multi_choice:
+        if current_step and current_step.is_text_input:
+            answer = request.POST.get("answer", "")
+        elif current_step and current_step.is_multi_choice:
             choice = request.POST.get("choice")
             if not choice or not current_step.choices.filter(key=choice).exists():
                 messages.error(request, "Please select an option before continuing.")
@@ -224,7 +231,17 @@ class WizardInstanceAdvanceView(PermissionRequiredMixin, View):
                 return redirect(return_url)
             decision = raw_decision == "true"
 
-        advance_wizard(instance, user=request.user, decision=decision, choice=choice)
+        try:
+            advance_wizard(
+                instance,
+                user=request.user,
+                decision=decision,
+                choice=choice,
+                answer=answer,
+            )
+        except ValidationError as error:
+            messages.error(request, " ".join(error.messages))
+            return redirect(return_url)
         return redirect(return_url)
 
 
@@ -235,7 +252,10 @@ class WizardInstanceCancelView(PermissionRequiredMixin, View):
     permission_required = "netbox_wizards.change_wizardinstance"
 
     def post(self, request, pk):
-        instance = get_object_or_404(WizardInstance, pk=pk)
+        instance = get_object_or_404(
+            WizardInstance.objects.restrict(request.user, "change"),
+            pk=pk,
+        )
         cancel_wizard(instance)
         messages.success(request, f"Cancelled wizard: {instance.definition}.")
         return_url = request.POST.get("next") or instance.get_absolute_url()

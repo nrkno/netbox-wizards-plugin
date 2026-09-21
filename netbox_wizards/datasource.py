@@ -46,18 +46,36 @@ Notes:
 import logging
 import posixpath
 
+import regex
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
+from django.db import transaction
 
 from .validators import validate_safe_link_url, validate_safe_markdown
 
 logger = logging.getLogger(__name__)
 
-# Plain fields copied directly from each step's data.
-_STEP_FIELDS = (
-    "order", "title", "instructions", "link_url", "link_text",
-    "is_decision", "decision_question", "is_multi_choice", "multi_choice_question",
-)
+# Plain fields copied directly from each step's data. Defaults are applied on
+# every sync so removing an optional YAML field restores the model default
+# instead of retaining stale state from an earlier revision.
+_STEP_FIELD_DEFAULTS = {
+    "order": 0,
+    "instructions": "",
+    "link_url": "",
+    "link_text": "Open",
+    "is_decision": False,
+    "decision_question": "",
+    "is_multi_choice": False,
+    "multi_choice_question": "",
+    "is_text_input": False,
+    "answer_key": "",
+    "text_input_prompt": "",
+    "text_input_placeholder": "",
+    "text_input_help": "",
+    "text_input_required": True,
+    "text_input_regex": "",
+    "text_input_validation_message": "",
+}
 # Fields that reference another step by its `key`, resolved once all steps exist.
 _STEP_LINK_FIELDS = ("next_step", "next_step_if_true", "next_step_if_false")
 
@@ -80,6 +98,7 @@ def parse_definition_data(raw_data):
 
 def _validate_steps_data(steps_data):
     seen_keys = set()
+    seen_answer_keys = set()
     for index, step_data in enumerate(steps_data):
         if not isinstance(step_data, dict):
             raise ValidationError(f"Step {index + 1} must be a mapping (object).")
@@ -91,6 +110,37 @@ def _validate_steps_data(steps_data):
         seen_keys.add(key)
         if not step_data.get("title"):
             raise ValidationError(f"Step '{key}' is missing a required 'title'.")
+        modes = (
+            bool(step_data.get("is_decision")),
+            bool(step_data.get("is_multi_choice")),
+            bool(step_data.get("is_text_input")),
+        )
+        if sum(modes) > 1:
+            raise ValidationError(
+                f"Step '{key}' can only use one of decision, multi-choice, or text-input mode."
+            )
+        answer_key = step_data.get("answer_key", "")
+        if step_data.get("is_text_input") and not answer_key:
+            raise ValidationError(f"Step '{key}' text-input mode requires 'answer_key'.")
+        if step_data.get("is_text_input") and not step_data.get("text_input_prompt"):
+            raise ValidationError(f"Step '{key}' text-input mode requires 'text_input_prompt'.")
+        if answer_key:
+            if not isinstance(answer_key, str) or not regex.fullmatch(
+                r"[A-Za-z][A-Za-z0-9_]*",
+                answer_key,
+            ):
+                raise ValidationError(f"Step '{key}' has an invalid 'answer_key'.")
+            if answer_key in seen_answer_keys:
+                raise ValidationError(f"Duplicate answer key '{answer_key}'.")
+            seen_answer_keys.add(answer_key)
+        validation_regex = step_data.get("text_input_regex", "")
+        if validation_regex:
+            try:
+                regex.compile(validation_regex)
+            except (regex.error, TypeError) as error:
+                raise ValidationError(
+                    f"Step '{key}' has an invalid 'text_input_regex': {error}."
+                ) from error
         _validate_source_field(
             f"Step '{key}' instructions",
             validate_safe_markdown,
@@ -126,6 +176,10 @@ def _validate_steps_data(steps_data):
                 if ckey in choice_keys:
                     raise ValidationError(f"Step '{step_data['key']}' has duplicate choice key '{ckey}'.")
                 choice_keys.add(ckey)
+                if "value" in choice and not isinstance(choice["value"], str):
+                    raise ValidationError(
+                        f"Step '{step_data['key']}' choice '{ckey}' 'value' must be text."
+                    )
                 target = choice.get("next_step")
                 if target and target not in seen_keys:
                     raise ValidationError(
@@ -140,6 +194,7 @@ def _validate_source_field(field_label, validator, value):
         raise ValidationError(f"{field_label}: {'; '.join(error.messages)}") from error
 
 
+@transaction.atomic
 def apply_synced_definition(definition, data, *, data_file=None):
     """
     Replace `definition`'s steps to match `data["steps"]`. Called from
@@ -206,6 +261,7 @@ def _sync_step_choices(step, choices_data, steps_by_key):
             step=step,
             key=choice_data["key"],
             label=choice_data.get("label", choice_data["key"]),
+            answer_value=choice_data.get("value"),
             order=order,
             next_step=target,
         )
@@ -220,15 +276,26 @@ def _sync_steps(definition, steps_data, *, data_file=None):
     seen_keys = set()
     steps_by_key = {}
 
+    # Clear answer keys which are changing before assigning any new values.
+    # This permits atomic swaps under the conditional uniqueness constraint.
+    incoming_answer_keys = {
+        step_data["key"]: step_data.get("answer_key", "")
+        for step_data in steps_data
+    }
+    for key, step in existing_by_key.items():
+        if step.answer_key and step.answer_key != incoming_answer_keys.get(key, ""):
+            step.answer_key = ""
+            step.save(update_fields=("answer_key",))
+
     # First pass: create/update each step's plain fields. Link fields are
     # resolved afterwards, once every step referenced by `key` exists.
     for step_data in steps_data:
         key = step_data["key"]
         seen_keys.add(key)
         step = existing_by_key.get(key) or WizardStep(definition=definition, key=key)
-        for field in _STEP_FIELDS:
-            if field in step_data:
-                setattr(step, field, step_data[field])
+        step.title = step_data["title"]
+        for field, default in _STEP_FIELD_DEFAULTS.items():
+            setattr(step, field, step_data.get(field, default))
 
         step.full_clean()
         step.save()
