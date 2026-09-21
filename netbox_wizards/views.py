@@ -16,7 +16,7 @@ from .forms import (
     WizardStepForm,
     WizardStepImageFormSet,
 )
-from .helpers import advance_wizard, cancel_wizard, start_wizard
+from .helpers import advance_wizard, cancel_wizard, go_back_wizard, start_wizard
 from .models import WizardDefinition, WizardInstance, WizardStep
 from .tables import WizardDefinitionTable, WizardInstanceTable
 
@@ -242,6 +242,25 @@ class WizardInstanceAdvanceView(PermissionRequiredMixin, View):
         except ValidationError as error:
             messages.error(request, " ".join(error.messages))
             return redirect(return_url)
+        return redirect(return_url)
+
+
+@register_model_view(WizardInstance, name="go_back")
+class WizardInstanceGoBackView(PermissionRequiredMixin, View):
+    """Move the instance back to the previous step, undoing the last advance."""
+
+    permission_required = "netbox_wizards.change_wizardinstance"
+
+    def post(self, request, pk):
+        instance = get_object_or_404(
+            WizardInstance.objects.restrict(request.user, "change"),
+            pk=pk,
+        )
+        return_url = request.POST.get("next") or instance.get_absolute_url()
+        try:
+            go_back_wizard(instance)
+        except ValidationError as error:
+            messages.error(request, " ".join(error.messages))
         return redirect(return_url)
 
 

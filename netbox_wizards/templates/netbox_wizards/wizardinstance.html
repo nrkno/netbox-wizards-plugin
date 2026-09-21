@@ -134,6 +134,14 @@
                 </button>
               </form>
             {% endif %}
+            {% if object.completed_step_count %}
+              <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_go_back' pk=object.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-secondary">
+                  <i class="mdi mdi-arrow-left"></i> Back
+                </button>
+              </form>
+            {% endif %}
             <form method="post" action="{% url 'plugins:netbox_wizards:wizardinstance_cancel' pk=object.pk %}">
               {% csrf_token %}
               <button type="submit" class="btn btn-outline-danger">Cancel wizard</button>

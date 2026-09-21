@@ -249,6 +249,31 @@ def advance_wizard(instance, *, user=None, decision=None, choice=None, answer=No
     return instance
 
 
+def go_back_wizard(instance):
+    """
+    Move the instance back to the most recently completed step, undoing
+    that step's progress record.
+    """
+    if instance.status != WizardInstanceStatusChoices.STATUS_IN_PROGRESS:
+        raise ValidationError("Cannot go back on a wizard that is not in progress.")
+
+    last_progress = (
+        instance.progress
+        .filter(completed=True)
+        .order_by("-completed_at", "-pk")
+        .select_related("step")
+        .first()
+    )
+    if last_progress is None:
+        raise ValidationError("Already on the first step — there is no previous step to go back to.")
+
+    previous_step = last_progress.step
+    last_progress.delete()
+    instance.current_step = previous_step
+    instance.save()
+    return instance
+
+
 def cancel_wizard(instance, *, note=""):
     """Cancel an in-progress wizard instance; it will never be completed."""
     if note:

@@ -16,6 +16,7 @@ from netbox_wizards.datasource import apply_synced_definition, parse_definition_
 from netbox_wizards.forms import WizardStepChoiceForm
 from netbox_wizards.helpers import (
     advance_wizard,
+    go_back_wizard,
     render_step_instructions,
     start_wizard,
 )
@@ -27,7 +28,11 @@ from netbox_wizards.models import (
     WizardStepChoice,
     WizardStepProgress,
 )
-from netbox_wizards.views import WizardInstanceAdvanceView, WizardInstanceCancelView
+from netbox_wizards.views import (
+    WizardInstanceAdvanceView,
+    WizardInstanceCancelView,
+    WizardInstanceGoBackView,
+)
 
 
 class WizardPermissionTestMixin:
@@ -765,3 +770,138 @@ class HTMLWizardInstancePermissionTest(WizardPermissionTestMixin, TestCase):
             cancel_instance.status,
             WizardInstanceStatusChoices.STATUS_CANCELLED,
         )
+
+
+class GoBackWizardTestCase(TestCase):
+    def setUp(self):
+        self.definition = WizardDefinition.objects.create(name="Back test", slug="back-test")
+        self.step3 = WizardStep.objects.create(
+            definition=self.definition, key="step3", order=30, title="Step 3",
+        )
+        self.step2 = WizardStep.objects.create(
+            definition=self.definition, key="step2", order=20, title="Step 2",
+            next_step=self.step3,
+        )
+        self.step1 = WizardStep.objects.create(
+            definition=self.definition, key="step1", order=10, title="Step 1",
+            next_step=self.step2,
+        )
+
+    def test_go_back_moves_to_previous_step_and_deletes_progress(self):
+        instance = start_wizard(self.definition)
+        advance_wizard(instance)
+        self.assertEqual(instance.current_step, self.step2)
+        self.assertTrue(instance.progress.filter(step=self.step1, completed=True).exists())
+
+        go_back_wizard(instance)
+
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step1)
+        self.assertFalse(instance.progress.filter(step=self.step1).exists())
+
+    def test_go_back_on_first_step_raises_validation_error(self):
+        instance = start_wizard(self.definition)
+        self.assertEqual(instance.current_step, self.step1)
+
+        with self.assertRaises(ValidationError):
+            go_back_wizard(instance)
+
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step1)
+
+    def test_go_back_works_through_branching_decisions(self):
+        alt_step = WizardStep.objects.create(
+            definition=self.definition, key="alt", order=25, title="Alt path",
+        )
+        self.step1.is_decision = True
+        self.step1.decision_question = "Continue?"
+        self.step1.next_step = None
+        self.step1.next_step_if_true = self.step2
+        self.step1.next_step_if_false = alt_step
+        self.step1.save()
+
+        instance = start_wizard(self.definition)
+        advance_wizard(instance, decision=False)
+        self.assertEqual(instance.current_step, alt_step)
+
+        go_back_wizard(instance)
+
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step1)
+
+    def test_go_back_multiple_steps(self):
+        instance = start_wizard(self.definition)
+        advance_wizard(instance)
+        advance_wizard(instance)
+        self.assertEqual(instance.current_step, self.step3)
+
+        go_back_wizard(instance)
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step2)
+
+        go_back_wizard(instance)
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step1)
+
+    def test_go_back_on_completed_wizard_raises_validation_error(self):
+        instance = start_wizard(self.definition)
+        advance_wizard(instance)
+        advance_wizard(instance)
+        advance_wizard(instance)
+        self.assertEqual(instance.status, WizardInstanceStatusChoices.STATUS_COMPLETED)
+
+        with self.assertRaises(ValidationError):
+            go_back_wizard(instance)
+
+
+class GoBackViewTest(WizardPermissionTestMixin, TestCase):
+    def setUp(self):
+        self.definition = WizardDefinition.objects.create(name="Back view", slug="back-view")
+        self.step2 = WizardStep.objects.create(
+            definition=self.definition, key="step2", order=20, title="Step 2",
+        )
+        self.step1 = WizardStep.objects.create(
+            definition=self.definition, key="step1", order=10, title="Step 1",
+            next_step=self.step2,
+        )
+
+    def test_go_back_view_redirects_and_moves_back(self):
+        user = self.create_user("back-user")
+        self.grant_instance_permission(user, ["change"])
+        instance = start_wizard(self.definition, user=user)
+        advance_wizard(instance, user=user)
+        self.assertEqual(instance.current_step, self.step2)
+
+        response = WizardInstanceGoBackView.as_view()(
+            self.html_request("post", user, {"next": "/"}),
+            pk=instance.pk,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step1)
+
+    def test_go_back_view_on_first_step_shows_error(self):
+        user = self.create_user("back-first")
+        self.grant_instance_permission(user, ["change"])
+        instance = start_wizard(self.definition, user=user)
+
+        request = self.html_request("post", user, {"next": "/"})
+        WizardInstanceGoBackView.as_view()(request, pk=instance.pk)
+
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step1)
+        self.assertTrue(any("first step" in str(m).lower() or "no previous" in str(m).lower()
+                            for m in request._messages))
+
+    def test_go_back_view_requires_change_permission(self):
+        user = self.create_user("back-noperm")
+        self.grant_instance_permission(user, ["add"])
+        instance = start_wizard(self.definition, user=user)
+        advance_wizard(instance, user=user)
+
+        with self.assertRaises(DjangoPermissionDenied):
+            WizardInstanceGoBackView.as_view()(
+                self.html_request("post", user, {"next": "/"}),
+                pk=instance.pk,
+            )
