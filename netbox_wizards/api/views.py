@@ -1,7 +1,9 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from netbox.api.authentication import TokenPermissions
 from netbox.api.viewsets import NetBoxModelViewSet
 from rest_framework import serializers
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from ..helpers import advance_wizard, cancel_wizard
@@ -12,6 +14,15 @@ from .serializers import (
     WizardInstanceSerializer,
     WizardStepSerializer,
 )
+
+
+class WizardInstanceChangePermission(TokenPermissions):
+    """Map custom POST actions to change permission instead of add permission."""
+
+    perms_map = {
+        **TokenPermissions.perms_map,
+        "POST": ["%(app_label)s.change_%(model_name)s"],
+    }
 
 
 class WizardDefinitionViewSet(NetBoxModelViewSet):
@@ -34,9 +45,27 @@ class WizardInstanceViewSet(NetBoxModelViewSet):
     queryset = WizardInstance.objects.all()
     serializer_class = WizardInstanceSerializer
 
+    def get_permissions(self):
+        if self.action in {"advance", "cancel"}:
+            return [WizardInstanceChangePermission()]
+        return super().get_permissions()
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if self.action in {"advance", "cancel"}:
+            # BaseViewSet maps every POST to "add"; custom mutation actions
+            # operate on existing objects and must instead be restricted by change.
+            self.queryset = WizardInstance.objects.restrict(request.user, "change")
+
+    @staticmethod
+    def _require_view_permission(request, instance):
+        if not WizardInstance.objects.restrict(request.user, "view").filter(pk=instance.pk).exists():
+            raise PermissionDenied("View permission is required to return stored answers.")
+
     @action(detail=True, methods=["post"])
     def advance(self, request, pk=None):
         instance = self.get_object()
+        self._require_view_permission(request, instance)
         user = request.user if request.user.is_authenticated else None
         current_step = instance.current_step
         if current_step and current_step.is_text_input:
@@ -59,6 +88,7 @@ class WizardInstanceViewSet(NetBoxModelViewSet):
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         instance = self.get_object()
+        self._require_view_permission(request, instance)
         note = request.data.get("note", "")
         cancel_wizard(instance, note=note)
         serializer = self.get_serializer(instance)

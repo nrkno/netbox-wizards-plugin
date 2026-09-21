@@ -206,7 +206,10 @@ class WizardInstanceAdvanceView(PermissionRequiredMixin, View):
     permission_required = "netbox_wizards.change_wizardinstance"
 
     def post(self, request, pk):
-        instance = get_object_or_404(WizardInstance, pk=pk)
+        instance = get_object_or_404(
+            WizardInstance.objects.restrict(request.user, "change"),
+            pk=pk,
+        )
         current_step = instance.current_step
         return_url = request.POST.get("next") or instance.get_absolute_url()
 
@@ -249,7 +252,10 @@ class WizardInstanceCancelView(PermissionRequiredMixin, View):
     permission_required = "netbox_wizards.change_wizardinstance"
 
     def post(self, request, pk):
-        instance = get_object_or_404(WizardInstance, pk=pk)
+        instance = get_object_or_404(
+            WizardInstance.objects.restrict(request.user, "change"),
+            pk=pk,
+        )
         cancel_wizard(instance)
         messages.success(request, f"Cancelled wizard: {instance.definition}.")
         return_url = request.POST.get("next") or instance.get_absolute_url()

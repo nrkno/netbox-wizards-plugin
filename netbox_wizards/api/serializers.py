@@ -1,5 +1,6 @@
 from netbox.api.serializers import NetBoxModelSerializer
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from ..helpers import get_stored_answers
 from ..models import (
@@ -78,6 +79,14 @@ class WizardInstanceSerializer(NetBoxModelSerializer):
     answers = serializers.SerializerMethodField()
 
     def get_answers(self, instance):
+        request = self.context.get("request")
+        if (
+            request is None
+            or not WizardInstance.objects.restrict(request.user, "view")
+            .filter(pk=instance.pk)
+            .exists()
+        ):
+            raise PermissionDenied("View permission is required to access stored answers.")
         return get_stored_answers(instance)
 
     class Meta:

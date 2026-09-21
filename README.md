@@ -85,6 +85,10 @@ link to the active instance. Click **Advance** on the instance page to move
 to the next step (answering any decision prompt or selecting a choice as
 required), or click **Cancel** to abandon the instance.
 
+Advancing or cancelling an instance requires NetBox change permission for that
+specific instance. Viewing an instance, including any stored answers, requires
+view permission for that instance.
+
 ## DataSource Sync
 
 Wizard definitions can be managed as YAML files in a version-controlled
@@ -161,7 +165,9 @@ Request body (optional):
 }
 ```
 
-Both actions return the updated instance serialization.
+Both actions require change and view permission for the target instance and
+return the updated instance serialization. Stored answers are serialized only
+when the caller has object-level view permission.
 
 ## License
 

@@ -1,11 +1,17 @@
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.messages.storage.fallback import FallbackStorage
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError
+from django.http import Http404
 from django.test import RequestFactory, TestCase
+from rest_framework.exceptions import PermissionDenied as RestPermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
+from users.models import ObjectPermission
 
 from netbox_wizards.api.serializers import WizardInstanceSerializer
 from netbox_wizards.api.views import WizardInstanceViewSet
+from netbox_wizards.choices import WizardInstanceStatusChoices
 from netbox_wizards.datasource import apply_synced_definition, parse_definition_data
 from netbox_wizards.forms import WizardStepChoiceForm
 from netbox_wizards.helpers import (
@@ -16,11 +22,41 @@ from netbox_wizards.helpers import (
 from netbox_wizards.models import (
     MAX_ANSWER_LENGTH,
     WizardDefinition,
+    WizardInstance,
     WizardStep,
     WizardStepChoice,
     WizardStepProgress,
 )
-from netbox_wizards.views import WizardInstanceAdvanceView
+from netbox_wizards.views import WizardInstanceAdvanceView, WizardInstanceCancelView
+
+
+class WizardPermissionTestMixin:
+    def create_user(self, username):
+        return get_user_model().objects.create_user(username=username)
+
+    def grant_instance_permission(self, user, actions, constraints=None):
+        permission = ObjectPermission.objects.create(
+            name=f"{user.username}-wizard-instance-{'-'.join(actions)}",
+            actions=actions,
+            constraints=constraints,
+        )
+        permission.object_types.add(ContentType.objects.get_for_model(WizardInstance))
+        user.object_permissions.add(permission)
+        return permission
+
+    @staticmethod
+    def api_request(method, user, data=None):
+        request = getattr(APIRequestFactory(), method)("/", data or {}, format="json")
+        force_authenticate(request, user=user)
+        return request
+
+    @staticmethod
+    def html_request(method, user, data=None):
+        request = getattr(RequestFactory(), method)("/", data or {})
+        request.user = user
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        return request
 
 
 class StoredAnswerTestCase(TestCase):
@@ -501,7 +537,13 @@ class AdvanceEndpointTest(TestCase):
         response = view(request, pk=instance.pk)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["answers"], {"service_name": "payments"})
-        self.assertEqual(WizardInstanceSerializer(instance).data["answers"], {"service_name": "payments"})
+        self.assertEqual(
+            WizardInstanceSerializer(
+                instance,
+                context={"request": response.renderer_context["request"]},
+            ).data["answers"],
+            {"service_name": "payments"},
+        )
 
     def test_api_advance_rejects_excessive_text_answer(self):
         instance = start_wizard(self.definition, user=self.user)
@@ -517,3 +559,209 @@ class AdvanceEndpointTest(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(instance.progress.exists())
+
+
+class APIWizardInstancePermissionTest(WizardPermissionTestMixin, TestCase):
+    def setUp(self):
+        self.definition = WizardDefinition.objects.create(name="Secured", slug="secured")
+        self.step = WizardStep.objects.create(
+            definition=self.definition,
+            key="name",
+            title="Name",
+            is_text_input=True,
+            answer_key="service_name",
+            text_input_prompt="Service name",
+        )
+
+    def test_add_only_permission_cannot_advance_or_cancel(self):
+        user = self.create_user("api-add-only")
+        self.grant_instance_permission(user, ["add"])
+        instance = start_wizard(self.definition, user=user)
+
+        advance_view = WizardInstanceViewSet.as_view({"post": "advance"})
+        response = advance_view(
+            self.api_request("post", user, {"answer": "payments"}),
+            pk=instance.pk,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(instance.progress.exists())
+
+        cancel_view = WizardInstanceViewSet.as_view({"post": "cancel"})
+        response = cancel_view(self.api_request("post", user), pk=instance.pk)
+        self.assertEqual(response.status_code, 403)
+        instance.refresh_from_db()
+        self.assertEqual(instance.current_step, self.step)
+
+    def test_object_restrictions_block_cross_instance_advance_and_cancel(self):
+        user = self.create_user("api-owner")
+        other = self.create_user("api-other")
+        self.grant_instance_permission(
+            user,
+            ["view", "change"],
+            {"started_by_id": user.pk},
+        )
+        own_instance = start_wizard(self.definition, user=user)
+        other_instance = start_wizard(self.definition, user=other)
+
+        advance_view = WizardInstanceViewSet.as_view({"post": "advance"})
+        response = advance_view(
+            self.api_request("post", user, {"answer": "stolen"}),
+            pk=other_instance.pk,
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(other_instance.progress.exists())
+
+        cancel_view = WizardInstanceViewSet.as_view({"post": "cancel"})
+        response = cancel_view(self.api_request("post", user), pk=other_instance.pk)
+        self.assertEqual(response.status_code, 404)
+        other_instance.refresh_from_db()
+        self.assertEqual(other_instance.current_step, self.step)
+        self.assertEqual(own_instance.started_by, user)
+
+    def test_view_permission_is_required_before_answers_are_serialized(self):
+        user = self.create_user("api-change-only")
+        self.grant_instance_permission(user, ["change"])
+        instance = start_wizard(self.definition, user=user)
+
+        advance_view = WizardInstanceViewSet.as_view({"post": "advance"})
+        response = advance_view(
+            self.api_request("post", user, {"answer": "payments"}),
+            pk=instance.pk,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(instance.progress.exists())
+
+        request = self.api_request("get", user)
+        request.user = user
+        with self.assertRaises(RestPermissionDenied):
+            WizardInstanceSerializer(instance, context={"request": request}).data
+
+        detail_view = WizardInstanceViewSet.as_view({"get": "retrieve"})
+        response = detail_view(request, pk=instance.pk)
+        self.assertEqual(response.status_code, 403)
+
+    def test_list_and_detail_only_return_viewable_instances_with_answers(self):
+        user = self.create_user("api-viewer")
+        other = self.create_user("api-hidden")
+        self.grant_instance_permission(user, ["view"], {"started_by_id": user.pk})
+        own_instance = start_wizard(self.definition, user=user)
+        hidden_instance = start_wizard(self.definition, user=other)
+        advance_wizard(own_instance, user=user, answer="visible")
+        advance_wizard(hidden_instance, user=other, answer="secret")
+
+        list_view = WizardInstanceViewSet.as_view({"get": "list"})
+        response = list_view(self.api_request("get", user))
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"] if isinstance(response.data, dict) else response.data
+        self.assertEqual([item["id"] for item in results], [own_instance.pk])
+        self.assertEqual(results[0]["answers"], {"service_name": "visible"})
+
+        detail_view = WizardInstanceViewSet.as_view({"get": "retrieve"})
+        response = detail_view(self.api_request("get", user), pk=hidden_instance.pk)
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("secret", str(response.data))
+
+    def test_authorized_user_can_advance_and_cancel(self):
+        user = self.create_user("api-authorized")
+        self.grant_instance_permission(
+            user,
+            ["view", "change"],
+            {"started_by_id": user.pk},
+        )
+        advance_instance = start_wizard(self.definition, user=user)
+
+        advance_view = WizardInstanceViewSet.as_view({"post": "advance"})
+        response = advance_view(
+            self.api_request("post", user, {"answer": "payments"}),
+            pk=advance_instance.pk,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["answers"], {"service_name": "payments"})
+
+        cancel_instance = start_wizard(self.definition, user=user)
+        cancel_view = WizardInstanceViewSet.as_view({"post": "cancel"})
+        response = cancel_view(
+            self.api_request("post", user, {"note": "No longer needed"}),
+            pk=cancel_instance.pk,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["note"], "No longer needed")
+
+
+class HTMLWizardInstancePermissionTest(WizardPermissionTestMixin, TestCase):
+    def setUp(self):
+        self.definition = WizardDefinition.objects.create(name="HTML secured", slug="html-secured")
+        self.step = WizardStep.objects.create(
+            definition=self.definition,
+            key="confirm",
+            title="Confirm",
+        )
+
+    def test_add_only_permission_cannot_advance_or_cancel(self):
+        user = self.create_user("html-add-only")
+        self.grant_instance_permission(user, ["add"])
+        instance = start_wizard(self.definition, user=user)
+
+        with self.assertRaises(DjangoPermissionDenied):
+            WizardInstanceAdvanceView.as_view()(
+                self.html_request("post", user, {"next": "/"}),
+                pk=instance.pk,
+            )
+        with self.assertRaises(DjangoPermissionDenied):
+            WizardInstanceCancelView.as_view()(
+                self.html_request("post", user, {"next": "/"}),
+                pk=instance.pk,
+            )
+        self.assertFalse(instance.progress.exists())
+
+    def test_object_restrictions_block_cross_instance_advance_and_cancel(self):
+        user = self.create_user("html-owner")
+        other = self.create_user("html-other")
+        self.grant_instance_permission(
+            user,
+            ["change"],
+            {"started_by_id": user.pk},
+        )
+        other_instance = start_wizard(self.definition, user=other)
+
+        with self.assertRaises(Http404):
+            WizardInstanceAdvanceView.as_view()(
+                self.html_request("post", user, {"next": "/"}),
+                pk=other_instance.pk,
+            )
+        with self.assertRaises(Http404):
+            WizardInstanceCancelView.as_view()(
+                self.html_request("post", user, {"next": "/"}),
+                pk=other_instance.pk,
+            )
+        self.assertFalse(other_instance.progress.exists())
+        other_instance.refresh_from_db()
+        self.assertEqual(other_instance.current_step, self.step)
+
+    def test_authorized_user_can_advance_and_cancel(self):
+        user = self.create_user("html-authorized")
+        self.grant_instance_permission(
+            user,
+            ["change"],
+            {"started_by_id": user.pk},
+        )
+        advance_instance = start_wizard(self.definition, user=user)
+
+        response = WizardInstanceAdvanceView.as_view()(
+            self.html_request("post", user, {"next": "/"}),
+            pk=advance_instance.pk,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(advance_instance.progress.get(step=self.step).completed)
+
+        cancel_instance = start_wizard(self.definition, user=user)
+        response = WizardInstanceCancelView.as_view()(
+            self.html_request("post", user, {"next": "/"}),
+            pk=cancel_instance.pk,
+        )
+        self.assertEqual(response.status_code, 302)
+        cancel_instance.refresh_from_db()
+        self.assertEqual(
+            cancel_instance.status,
+            WizardInstanceStatusChoices.STATUS_CANCELLED,
+        )
